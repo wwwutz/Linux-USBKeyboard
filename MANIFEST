@@ -1,0 +1,16 @@
+bin/readline_usb
+Build.PL
+Changes
+examples/echo_chars.pl
+examples/echo_codes.pl
+examples/forked_reader.pl
+examples/multi.pl
+inc/InlineBuild.pm
+lib/Linux/USBKeyboard.pm
+lib/Linux/USBKeyboard/functions.c
+MANIFEST			This list of files
+MANIFEST.SKIP
+META.yml
+README
+t/00-load.t
+t/arguments.t
