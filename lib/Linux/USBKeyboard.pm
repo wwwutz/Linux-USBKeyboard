@@ -1,6 +1,6 @@
 package Linux::USBKeyboard;
 BEGIN {
-  our $VERSION = 0.01;
+  our $VERSION = 0.02;
 }
 
 use warnings;
@@ -40,29 +40,44 @@ Patches welcome.
 
 =head1 SETUP
 
-You'll need a fairly modern Linux, Inline.pm, and libhid.
+You'll need a fairly modern Linux, Inline.pm, and libusb.
 
   cpan Inline
-  aptitude install libhid-dev
+  aptitude install libusb-dev
 
 You should setup udev to give the device `plugdev` group permissions or
-whatever (rather than developing perl code as root.)
+whatever (rather than developing perl code as root.)  One way to do this
+would be to add the following to /etc/udev/permissions.rules:
+
+  SUBSYSTEM=="usb_device", GROUP="plugdev"
 
 =cut
 
 use Inline (
   C => Config => 
-  CLEAN_AFTER_BUILD => 0,
-  LIBS => '-lhid',
+  LIBS => '-lusb',
   NAME    => __PACKAGE__,
   #VERSION => __PACKAGE__->VERSION,
   #FORCE_BUILD => 1,
+  #CLEAN_AFTER_BUILD => 0,
 );
 
 BEGIN {
 my $base = __FILE__; $base =~ s#.pm$#/#;
 Inline->import(C => "$base/functions.c");
 $ENV{DBG} and warn "ready\n";
+}
+
+my %PROPS;
+sub DESTROY {
+  my $self = shift;
+  delete($PROPS{$self});
+  $self->_destroy;
+}
+sub xmap {
+  my $self = shift;
+  my $p = $PROPS{$self} or return;
+  return($p->{xmap});
 }
 
 =head1 Constructor
@@ -76,9 +91,13 @@ $ENV{DBG} and warn "ready\n";
 
 sub new {
   my $class = shift;
-  my ($vendor_id, $product_id) = $class->_check_args(@_);
+  my ($vendor_id, $product_id, %props) = $class->_check_args(@_);
 
   my $self = $class->create($vendor_id, $product_id, 0);
+  if(%props) {
+    $PROPS{$self} = \%props;
+  }
+
   return($self);
 } # end subroutine new definition
 ########################################################################
@@ -122,9 +141,9 @@ sub _check_args {
   my %hash = @args;
   for(qw(vendor product)) {
     exists($hash{$_}) or croak("must have '$_' argument");
-    $hash{$_} = $hexit->($hash{$_});
+    $hash{$_} = $hexit->(delete($hash{$_}));
   }
-  return($hash{vendor}, $hash{product});
+  return(delete($hash{vendor}), delete($hash{product}), %hash);
 } # end subroutine _check_args definition
 ########################################################################
 
@@ -144,8 +163,12 @@ multi-device usage.
 
 =cut
 
-sub open {
+sub open :method {
   my $package = shift;
+  # TODO I think I want to pass a subref in here which allows you to
+  # have your own handling of the codes - e.g. to read F1 and such with
+  # readline.
+
   my $fh = Linux::USBKeyboard::FileHandle->new;
   my $pid = open($fh, '-|');
   unless($pid) {
@@ -164,13 +187,149 @@ sub open {
 } # end subroutine open definition
 ########################################################################
 
+
+=head2 open_keys
+
+Similar to open(), but returns one keypress (plus "bucky bits") per
+line, with single-character names where applicable and long names for
+all of the function keys, direction keys, enter, space, backspace,
+numpad, &c.
+
+  my $fh = Linux::USBKeyboard->open_keys(@spec);
+
+The "bucky bits" ('shift', 'ctrl', 'alt', and 'super') will be appended
+after the keyname and joined with spaces.  Both the short name (e.g.
+'alt') and a form preceded by 'right_' and/or 'left_' will be present.
+Mapping these into a hash allows you to ignore (or not) whether the
+shift key was pressed on the right or left of the keyboard.
+
+  chomp($line);
+  my ($k, @bits) = split(/ /, $line);
+  my %bucky = map({$_ => 1} @bits);
+
+For now, the character keys will simply be shifted as per open()
+
+For key names, see the source code of this module.  The names are common
+abbreviations in lowercase except for F1-F12.
+
+=cut
+
+{
+my %cmap = reverse(
+  escape  => 1,
+  map({('F'.$_ => 58+$_)} 1..10),
+  F11 => 87,
+  F12 => 88,
+  sysreq => 99,
+  scroll => 70,
+  break  => 119,
+  backspace => 14,
+  tab    => 15,
+  capslock => 58,
+  insert => 110,
+  delete => 111,
+  home   => 102,
+  end    => 107,
+  pgup   => 104,
+  pgdn   => 109,
+  left   => 105,
+  right  => 106,
+  up     => 103,
+  down   => 108,
+  select => 127,
+
+  space  => 57,
+  enter  => 28,
+  tab    => 15,
+
+  num_lock  => 69,
+  num_slash => 98,
+  num_star  => 55,
+  num_minus => 74,
+  num_plus  => 78,
+  num_dot   => 83,
+  num_7     => 71,
+  num_8     => 72,
+  num_9     => 73,
+  num_4     => 75,
+  num_5     => 76,
+  num_6     => 77,
+  num_1     => 79,
+  num_2     => 80,
+  num_3     => 81,
+  num_0     => 82,
+  num_enter => 96,
+);
+my %smap = (
+  left_ctrl   => 0x01,
+  right_ctrl  => 0x10,
+  left_shift  => 0x02,
+  right_shift => 0x20,
+  left_alt    => 0x04,
+  right_alt   => 0x40,
+  left_super  => 0x08,
+  right_super => 0x80,
+);
+sub open_keys {
+  my $package = shift;
+  my $fh = Linux::USBKeyboard::FileHandle->new;
+  my $pid = open($fh, '-|');
+  unless($pid) {
+    undef($fh); # destroy that
+    my $kb = Linux::USBKeyboard->new(@_);
+
+    local $| = 1;
+    $SIG{HUP} = sub { exit; };
+
+    my $xmap = $kb->xmap;
+
+    while(1) {
+      my ($c, $s) = $kb->keycode;
+      next if($c <= 0);
+      my %sbits;
+      if($s) {
+        %sbits = map({$s & $smap{$_} ? ($_ => 1) : ()} keys %smap);
+        foreach my $key (qw(shift ctrl alt super)) {
+          $sbits{$key} = 1
+            if($sbits{"right_$key"} or $sbits{"left_$key"});
+        }
+      }
+      my $k;
+      if($k = $cmap{$c}) { # named keys and the numpad
+        # now the shift key doesn't change the output, but might be of
+        # importance to the listener
+      }
+      else {
+        $k = code_to_key($sbits{shift}, $c);
+        next if($k eq "\0"); # XXX bah
+        delete($sbits{shift});
+      }
+
+      if($xmap) {
+        $k = $xmap->{$k} if(exists($xmap->{$k}));
+      }
+      print "$k" .
+        (%sbits ? join(' ', '', sort(keys %sbits)) : '') .
+        "\n";
+    }
+    exit;
+  }
+  $fh->init(pid => $pid);
+  return($fh);
+}} # end subroutine open_keys definition
+########################################################################
+
 =head1 Methods
 
 =head2 char
 
-Returns the character (with shift bit applied.)
+Returns the character (with shift bit applied) for a pressed key.
 
   print $k->char;
+
+Note that this returns the empty string for any keys which are
+non-normal characters (e.g. backspace, esc, F1.)  The 'Enter' key is
+returned as "\n".
 
 =cut
 
@@ -179,14 +338,24 @@ Returns the character (with shift bit applied.)
 =head2 keycode
 
 Get the raw keycode.  This allows access to things like numlock, but
-also returns keyup events (0).  Returns -1 if there was no event.
+also returns keyup events (0).  Returns -1 if there was no event before
+the timeout.
 
-This method is somewhat unreliable in that it can't tell you when a key
-was pressed while another key is being held down.  Consider it alpha.
+Note that this can only detect the press of a single key.  The device
+does send extra data if two keys are pressed at the same time (e.g. "a"
+and "x"), but at some point the code becomes ambiguous anyway because
+keyboards do not contain 105 wires (and every device is different.)
+
+  my ($code, $shiftbits) = $kb->keycode;
 
 =cut
 
-*keycode = *_keycode;
+sub keycode {
+  my $self = shift;
+  my (%args) = @_;
+  return($self->_keycode($args{timeout}||1000));
+} # end subroutine keycode definition
+########################################################################
 
 
 {

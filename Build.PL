@@ -1,4 +1,3 @@
-
 use strict;
 use warnings;
 use Module::Build;
@@ -19,6 +18,7 @@ my $builder = $build_class->new(
   },
   requires => {
     'Inline::C'     => 0,
+    perl            => 5.008002
   },
   add_to_cleanup      => [ qw(
     Linux-USBKeyboard-*
@@ -27,6 +27,22 @@ my $builder = $build_class->new(
     USBKeyboard.inl
   )],
 );
+
+use lib qw(inc);
+require Devel::CheckLib;
+# uh... is it really worth it
+eval { Devel::CheckLib::assert_lib(lib => 'usb') };
+if(my $err = $@) {
+  $err = "ERROR we need to be able to link against libusb!\n$err";
+  if($ENV{AUTOMATED_TESTING}) {
+    warn $err;
+    exit 0; # because cpantesters are special!
+  }
+  else {
+    die $err;
+  }
+
+}
 
 $builder->create_build_script();
 

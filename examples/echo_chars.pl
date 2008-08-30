@@ -6,11 +6,21 @@ use strict;
 use lib 'lib';
 
 use Linux::USBKeyboard;
+# NOTE either:
+#  1. be root
+#  2. chgrp plugdev /dev/bus/usb/*/*
+#  3. do it with udev
+#  /etc/udev/permissions.rules: SUBSYSTEM=="usb_device", GROUP="plugdev"
 
 # e.g. 0x0e6a, 0x0001
-(@ARGV) or
+my @args = @ARGV;
+(@args) or
   die 'run `lsusb` to determine your vendor_id, product_id';
-my ($vendor, $product) = map({hex($_)} @ARGV);
+my ($vendor, $product) = map({hex($_)}
+  $#args ? @args[0,1] : split(/:/, $args[0]));
+
+my $exit = $args[2];
+
 $product = 1 unless(defined($product));
 
 my $k = eval {Linux::USBKeyboard->new($vendor, $product)};
@@ -30,6 +40,7 @@ else {
     my $c = $k->char;
     #print $c, '(', length($c), ')';
     print $c;
+    last if($c eq "\n" and $exit);
   }
 }
 

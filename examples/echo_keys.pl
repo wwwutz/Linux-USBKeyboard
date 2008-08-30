@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+# echo keypresses with open_keys()
+
 use warnings;
 use strict;
 
@@ -17,27 +19,12 @@ my ($vendor, $product) = map({hex($_)}
 $product = 1 unless(defined($product));
 
 warn "getting $vendor, $product\n";
-my $k = eval {Linux::USBKeyboard->new($vendor, $product)};
+my $k = eval {Linux::USBKeyboard->open_keys($vendor, $product)};
 if($@) { die "$@ - you might have the wrong permissions or address"; }
 
-local $| = 1;
-
-# sorry, no forks
-warn "type now\n";
-$SIG{INT} = sub {warn "bye\n"; exit};
-my $count = 0;
-while(1) {
-  my ($c, $s) = $k->keycode(timeout => 0);
-  #warn "reading\n";# unless($count++ % 100);
-  next if($c <= 0);
-  warn "shifted: $s\n" if($s);
-  if($c == 69) {
-    print "NumLock!\n"
-  }
-  else {
-    print Linux::USBKeyboard::code_to_key(0, $c);
-    warn " code: $c\n";
-  }
+$SIG{INT} = sub { warn "bye\n"; exit};
+while(my $line = <$k>) {
+  print $line;
 }
 
 # vim:ts=2:sw=2:et:sta
