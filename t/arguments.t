@@ -12,9 +12,10 @@ BEGIN {
   [['0x10', '0x20'],                      [0x10, 0x20]],
   [[vendor => '0x10', product => '0x20'], [0x10, 0x20]],
   [[foo => bar => 'baz'],                 dies => qr/^odd number/],
-  [[foo => 'bar'],                        dies => qr/is not hex-like/],
-  [[vendor => '0x10'],                    dies => qr/is not hex-like/],
-  [[vendor => '0x10', ProDucT => '10'],   dies => qr/must have 'prod/],
+  [[foo => 'bar'],                        dies => qr/^vendor,.*or devnum required/],
+  # XXX I guess you can select with only a 'vendor' option now
+  # [[vendor => '0x10'],                    dies => qr/is not hex-like/],
+  # [[vendor => '0x10', ProDucT => '10'],   dies => qr/^vendor,.*or devnum required/],
   [[vendor => '0x10', product => 'a0'],   dies => qr/is not hex-like/],
   [[vendor => '0x10', product => '0x20'], [0x10, 0x20]],
   [[vendor => '10', product => '20'],     [10, 20]],
@@ -24,7 +25,7 @@ use Test::More (tests => scalar(@tests) * 2);
 
 foreach my $set (@tests) {
   my ($in, @exp) = @$set;
-  my @out = eval {Linux::USBKeyboard->_check_args(@$in)};
+  my %out = eval {Linux::USBKeyboard->_check_args(@$in)};
   my $err = $@;
   if(scalar(@exp) >= 2 and $exp[0] eq 'dies') {
     ok(defined($err), 'got error');
@@ -32,7 +33,8 @@ foreach my $set (@tests) {
   }
   else {
     ok(!$err, 'no error') or diag($err . ' -- ' . join(', ', @$in));
-    is_deeply(\@out, $exp[0], 'expect for ' . join(', ', @$in));
+    my $check = [ @{$out{selector}}{'vendor','product'} ];
+    is_deeply($check, $exp[0], 'expect for ' . join(', ', @$in));
   }
 }
 

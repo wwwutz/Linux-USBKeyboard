@@ -1,6 +1,6 @@
 ---
 name: Linux-USBKeyboard
-version: 0.02
+version: 0.03
 author:
   - 'Eric Wilhelm @ <ewilhelm at cpan dot org>'
 abstract: access devices pretending to be qwerty keyboards
@@ -16,10 +16,10 @@ build_requires:
 provides:
   Linux::USBKeyboard:
     file: lib/Linux/USBKeyboard.pm
-    version: 0.02
+    version: 0.03
   Linux::USBKeyboard::FileHandle:
     file: lib/Linux/USBKeyboard.pm
-generated_by: Module::Build version 0.280802
+generated_by: Module::Build version 0.3201
 meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.2.html
-  version: 1.2
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4

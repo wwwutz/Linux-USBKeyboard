@@ -1,6 +1,6 @@
 package Linux::USBKeyboard;
 BEGIN {
-  our $VERSION = 0.02;
+  our $VERSION = 0.03;
 }
 
 use warnings;
@@ -13,7 +13,8 @@ Linux::USBKeyboard - access devices pretending to be qwerty keyboards
 
 =head1 SYNOPSIS
 
-Use `lsusb` to discover the vendor+product id pair.
+Use `lsusb` to discover the vendor id, product id, busnum, and/or devnum.
+See also `udevinfo` or /sys/bus/usb/devices/* for more advanced info.
 
 =head1 ABOUT
 
@@ -54,7 +55,7 @@ would be to add the following to /etc/udev/permissions.rules:
 =cut
 
 use Inline (
-  C => Config => 
+  C => Config =>
   LIBS => '-lusb',
   NAME    => __PACKAGE__,
   #VERSION => __PACKAGE__->VERSION,
@@ -63,21 +64,14 @@ use Inline (
 );
 
 BEGIN {
-my $base = __FILE__; $base =~ s#.pm$#/#;
+my $base = __FILE__; $base =~ s{.pm$}{/};
 Inline->import(C => "$base/functions.c");
 $ENV{DBG} and warn "ready\n";
 }
 
-my %PROPS;
 sub DESTROY {
   my $self = shift;
-  delete($PROPS{$self});
   $self->_destroy;
-}
-sub xmap {
-  my $self = shift;
-  my $p = $PROPS{$self} or return;
-  return($p->{xmap});
 }
 
 =head1 Constructor
@@ -87,17 +81,25 @@ sub xmap {
 
   my $kb = Linux::USBKeyboard->new($vendor_id, $product_id);
 
+  my $kb = Linux::USBKeyboard->new(busnum => 1, devnum => 2);
+
+  my $kb = Linux::USBKeyboard->new(vendor => $vendor_id, busnum => 1);
+
+etc
+
+You may pass the vendor and product IDs as raw parameters, or you may
+pass any combination of vendor, product, busnum, devnum, and/or iface as
+named parameters.  At least one parameter other than iface must be
+specified.  iface is the interface to claim on the device, and it
+defaults to 0.  No other parameters have defaults.
+
 =cut
 
 sub new {
   my $class = shift;
-  my ($vendor_id, $product_id, %props) = $class->_check_args(@_);
-
-  my $self = $class->create($vendor_id, $product_id, 0);
-  if(%props) {
-    $PROPS{$self} = \%props;
-  }
-
+  my $self = {$class->_check_args(@_)};
+  bless($self, $class);
+  $self->_usb_init();   # set up USB stuff
   return($self);
 } # end subroutine new definition
 ########################################################################
@@ -107,9 +109,10 @@ sub new {
 Hex numbers passed as strings must include the leading '0x', otherwise
 they are assumed to be integers.
 
-Arguments may also be a hash (vendor => $v, product => $p.)
+Arguments may also be a hash (vendor => $v, product => $p) or
+(busnum => $b, $devnum => $d) or any mixture thereof.
 
-  my ($vendor_id, $product_id) = $class->_check_args(@_);
+  my ($hash) = $class->_check_args(@_);
 
 =cut
 
@@ -117,7 +120,7 @@ sub _check_args {
   my $class = shift;
   my (@args) = @_;
 
-  my $d = sub {$_[0] =~ m/^\d+$/};
+  my $d = sub {$_[0] =~ m/^\d/};
   my $hexit = sub {
     my ($n) = @_;
     return($n) unless($n =~ m/^0x/i or $n =~ m/\D/);
@@ -125,25 +128,25 @@ sub _check_args {
     return(hex($n));
   };
   if(scalar(@args) == 2 and $d->($args[0]) and $d->($args[1])) {
-    return(@args); # explicit vendor/product
-  }
-
-  # hex strings or errors
-  if(scalar(@args) == 2) {
-    foreach my $arg (@args) {
-      $arg = $hexit->($arg);
-    }
-    return(@args);
+    # explicit vendor/product pair
+    return(
+      selector => {
+        vendor => $hexit->($args[0]), product => $hexit->($args[1])
+      }
+    );
   }
 
   # hash arguments
   (@args % 2) and croak("odd number of elements in argument hash");
-  my %hash = @args;
-  for(qw(vendor product)) {
-    exists($hash{$_}) or croak("must have '$_' argument");
-    $hash{$_} = $hexit->(delete($hash{$_}));
+  my %sel;
+  my %hash = (@args, selector => \%sel);
+  for(qw(vendor product busnum devnum)) {
+    $sel{$_} = $hexit->(delete($hash{$_})) if($hash{$_});
   }
-  return(delete($hash{vendor}), delete($hash{product}), %hash);
+  %sel or croak("vendor, product, busnum, or devnum required");
+  exists $hash{iface} and $sel{iface} = delete($hash{iface});
+
+  return %hash;
 } # end subroutine _check_args definition
 ########################################################################
 
@@ -151,8 +154,9 @@ sub _check_args {
 
 Get a filehandle to a forked process.
 
-  my $fh = Linux::USBKeyboard->open($vendor_id, $product_id);
+  my $fh = Linux::USBKeyboard->open(@spec);
 
+The @spec has the same format as in new().
 The filehandle is an object from a subclass of IO::Handle.  It has the
 method $fh->pid if you need the process id.  The subprocess will be
 automatically killed by the object's destructor.
@@ -281,7 +285,7 @@ sub open_keys {
     local $| = 1;
     $SIG{HUP} = sub { exit; };
 
-    my $xmap = $kb->xmap;
+    my $xmap = $kb->{xmap};
 
     while(1) {
       my ($c, $s) = $kb->keycode;

@@ -1,5 +1,9 @@
 Revision history for Linux-USBKeyboard
 
+0.03 2009-03-23
+
+  * allow arguments of busnum and devnum for finding keyboards
+
 0.02 2008-08-29
 
   * drop libhid and use libusb directly
