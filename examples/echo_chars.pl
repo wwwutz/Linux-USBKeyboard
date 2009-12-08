@@ -3,8 +3,6 @@
 use warnings;
 use strict;
 
-use lib 'lib';
-
 use Linux::USBKeyboard;
 # NOTE either:
 #  1. be root

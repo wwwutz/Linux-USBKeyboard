@@ -25,10 +25,12 @@ while(my $key = <$kb>) {
   chomp($key);
   if(my $cmd = $config->{$key}) {
     warn "$cmd\n";
-    unless(fork) {
+    my $pid = fork;
+    unless($pid) {
       close(STDIN); close(STDOUT); close(STDERR);
       exec(split(/ /, $cmd));
     }
+    waitpid($pid, 0);
   }
 }
 wait;

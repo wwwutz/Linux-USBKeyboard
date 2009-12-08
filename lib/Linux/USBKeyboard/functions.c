@@ -109,7 +109,7 @@ int fetchInt(HV* hash, const char* key, int len, int defaultVal) {
 }
 
 void _usb_init (SV* obj) {
-  SV** selectorp = hv_fetchs((HV*)SvRV(obj), "selector", 0);
+  SV** selectorp = hv_fetch((HV*)SvRV(obj), "selector", 8, 0);
   if (!selectorp) croak("sanity failure: no selector in $self");
   HV* selector = (HV*)SvRV(*selectorp);
 

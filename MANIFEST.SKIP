@@ -35,3 +35,4 @@
 \bcover_db\b
 ^_Inline/
 \.inl$
+^MYMETA.yml$

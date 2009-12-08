@@ -1,5 +1,9 @@
 Revision history for Linux-USBKeyboard
 
+0.04 2009-12-07
+
+  * made XS compatible with 5.8.8 (RT #49729)
+
 0.03 2009-03-23
 
   * allow arguments of busnum and devnum for finding keyboards
