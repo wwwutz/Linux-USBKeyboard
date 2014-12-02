@@ -1,11 +1,12 @@
 package Linux::USBKeyboard;
 BEGIN {
-  our $VERSION = 0.04;
+  our $VERSION = 0.04_01;
 }
 
 use warnings;
 use strict;
 use Carp;
+use Errno qw ( ETIMEDOUT EAGAIN );
 
 =head1 NAME
 
@@ -289,6 +290,9 @@ sub open_keys {
 
     while(1) {
       my ($c, $s) = $kb->keycode;
+      
+      exit unless ($!{ETIMEDOUT} or $!{EAGAIN}); # honor errno for disconnect
+      
       next if($c <= 0);
       my %sbits;
       if($s) {

@@ -1,6 +1,6 @@
 ---
 name: Linux-USBKeyboard
-version: 0.04
+version: 0.04_01
 author:
   - 'Eric Wilhelm @ <ewilhelm at cpan dot org>'
 abstract: access devices pretending to be qwerty keyboards
@@ -18,7 +18,7 @@ configure_requires:
 provides:
   Linux::USBKeyboard:
     file: lib/Linux/USBKeyboard.pm
-    version: 0.04
+    version: 0.04_01
   Linux::USBKeyboard::FileHandle:
     file: lib/Linux/USBKeyboard.pm
 generated_by: Module::Build version 0.350201
